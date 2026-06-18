@@ -553,7 +553,7 @@ function openOrder(id){
   const o = id ? db.orders.find(x=>x.id===id) : null;
   const base = db.settings.base;
   editOrderRates = (o&&o.rates) || db.settings.rates; // existing orders keep their locked rate
-  editingOrderItems = o ? JSON.parse(JSON.stringify(o.items||[])) : [{title:'',article:'',size:'',qty:1,cost:'',costCur:'USD',priceForClient:'',priceCur:base,clientId:'',paid:false,link:'',photo:''}];
+  editingOrderItems = o ? JSON.parse(JSON.stringify(o.items||[])) : [{title:'',article:'',size:'',qty:1,cost:'',costCur:'USD',priceForClient:'',priceCur:base,clientId:'',paid:false,link:'',photo:'',_open:true}];
   const storeOpts = db.stores.map(s=>`<option value="${s.id}" ${o&&o.storeId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
   const sheet=document.getElementById('sheet');
   sheet.innerHTML=`
@@ -590,16 +590,33 @@ function openOrder(id){
 function curSelect(idx,key,sel){
   return `<select onchange="updItem(${idx},'${key}',this.value)" style="flex:0 0 84px; width:84px; background:var(--card); border:1px solid var(--border); color:var(--text); padding:11px 6px; border-radius:12px">${CURRENCIES.map(c=>`<option ${sel===c?'selected':''}>${c}</option>`).join('')}</select>`;
 }
-function renderItemEditors(){
-  const base=db.settings.base;
-  const wrap=document.getElementById('itemsWrap');
-  wrap.innerHTML=`<datalist id="clientsDL">${db.clients.map(c=>`<option value="${esc(clientLabel(c))}">`).join('')}</datalist>`
-    +editingOrderItems.map((it,idx)=>{
-    const profB=itemTotal(it,editOrderRates)-itemCost(it,editOrderRates); // per-item profit in base
-    const has=(it.cost||it.priceForClient);
-    return `
-    <div class="itemcard">
-      <button class="btn sm danger del" onclick="removeItemRow(${idx})">✕</button>
+function itemCollapsed(it,idx,base){
+  const profB=itemTotal(it,editOrderRates)-itemCost(it,editOrderRates);
+  const has=(it.cost||it.priceForClient);
+  return `<div class="itemcard" style="padding:10px 11px">
+    <div class="row" style="align-items:center; gap:8px">
+      ${it.photo?`<img class="thumb" src="${esc(it.photo)}" alt="" style="flex:0 0 auto">`:''}
+      <div onclick="toggleItem(${idx})" style="flex:1; min-width:0; cursor:pointer">
+        <b>${esc(it.title||t('noName'))}</b>${it.size?` <span class="muted">(${esc(it.size)})</span>`:''}${it.qty>1?` <span class="muted">×${it.qty}</span>`:''}
+        <div class="sub">👤 ${it.clientId?esc(clientLabel(clientById(it.clientId))):t('noClient')} ${it.paid?'✅':''}</div>
+        <div class="sub">${money(itemTotal(it,editOrderRates),base)}${has?` · <span class="${profB>=0?'profit':'loss'}">${money(profB,base)}</span>`:''}</div>
+      </div>
+      <button class="btn sm ghost" onclick="toggleItem(${idx})" title="${t('edit')}">✏️</button>
+      <button class="btn sm danger" onclick="removeItemRow(${idx})">✕</button>
+    </div>
+  </div>`;
+}
+function itemExpanded(it,idx,base){
+  const profB=itemTotal(it,editOrderRates)-itemCost(it,editOrderRates);
+  const has=(it.cost||it.priceForClient);
+  return `<div class="itemcard">
+      <div class="row" style="align-items:center; margin-bottom:8px">
+        <b class="muted" style="font-size:13px">${t('items')} #${idx+1}</b>
+        <div style="display:flex; gap:6px; flex:0 0 auto">
+          <button class="btn sm sec" onclick="toggleItem(${idx})" title="${t('cancel')}">▲</button>
+          <button class="btn sm danger" onclick="removeItemRow(${idx})">✕</button>
+        </div>
+      </div>
       <div class="field"><label>${t('title')}</label><input value="${esc(it.title)}" oninput="updItem(${idx},'title',this.value)"></div>
       <div class="field"><label>${t('client')}</label>
         <div class="linkrow">
@@ -629,9 +646,15 @@ function renderItemEditors(){
         ${it.photo?`<img class="photo-edit" src="${esc(it.photo)}" alt="" style="margin-top:8px">`:''}
       </div>
     </div>`;
-  }).join('');
+}
+function renderItemEditors(){
+  const base=db.settings.base;
+  const wrap=document.getElementById('itemsWrap');
+  wrap.innerHTML=`<datalist id="clientsDL">${db.clients.map(c=>`<option value="${esc(clientLabel(c))}">`).join('')}</datalist>`
+    +editingOrderItems.map((it,idx)=> it._open ? itemExpanded(it,idx,base) : itemCollapsed(it,idx,base)).join('');
   updOrderTotBar();
 }
+function toggleItem(idx){ editingOrderItems[idx]._open=!editingOrderItems[idx]._open; renderItemEditors(); }
 function updItem(idx,key,val){
   editingOrderItems[idx][key]=val;
   if(key==='costCur'||key==='priceCur'){ renderItemEditors(); return; }  // discrete change → full re-render
@@ -663,7 +686,7 @@ function updItemProfit(idx){
 function addItemRow(){
   const last=editingOrderItems[editingOrderItems.length-1];
   const cur=(last&&last.costCur)||'USD'; // reuse previous item's purchase currency as a convenience
-  editingOrderItems.push({title:'',article:'',size:'',qty:1,cost:'',costCur:cur,priceForClient:'',priceCur:db.settings.base,clientId:'',paid:false,link:'',photo:''});
+  editingOrderItems.push({title:'',article:'',size:'',qty:1,cost:'',costCur:cur,priceForClient:'',priceCur:db.settings.base,clientId:'',paid:false,link:'',photo:'',_open:true});
   renderItemEditors();
 }
 function pickItemClient(idx,val){ // resolve typed/selected client label → id (autocomplete via datalist)
