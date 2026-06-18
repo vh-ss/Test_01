@@ -239,7 +239,7 @@ const I18N = {
     items:"Товари", addItem:"+ Додати товар",
     title:"Назва товару", article:"Артикул", size:"Розмір", qty:"К-сть",
     cost:"Закупка", priceForClient:"Ціна клієнту", link:"Посилання", photo:"Фото",
-    orderTotal:"Сума замовлення", orderProfit:"Прибуток",
+    orderTotal:"Сума замовлення", orderProfit:"Прибуток", salesWord:"Продаж",
     chartProfit:"Прибуток по місяцях", totalOwed:"Всього винні", fromLabel:"З", toLabel:"По",
     periodPrev:"Минулий місяць", queueAll:"Всі",
     save:"Зберегти", cancel:"Скасувати", del:"Видалити", edit:"Редагувати",
@@ -301,7 +301,7 @@ const I18N = {
     items:"Items", addItem:"+ Add item",
     title:"Product title", article:"Article", size:"Size", qty:"Qty",
     cost:"Cost", priceForClient:"Client price", link:"Link", photo:"Photo",
-    orderTotal:"Order total", orderProfit:"Profit",
+    orderTotal:"Order total", orderProfit:"Profit", salesWord:"Sales",
     chartProfit:"Profit by month", totalOwed:"Total owed", fromLabel:"From", toLabel:"To",
     periodPrev:"Last month", queueAll:"All",
     save:"Save", cancel:"Cancel", del:"Delete", edit:"Edit",
@@ -522,9 +522,11 @@ function renderOrders(){
         </div>
         <span class="pill tap st${o.status||0}" onclick="event.stopPropagation();cycleStatus('${o.id}')" title="${esc(t('status'))}">${esc(t('st')[o.status||0])}</span>
       </div>
-      <div class="row" style="margin-top:8px; align-items:center">
-        <div><span class="big">${money(orderTotal(o),base)}</span>
-          <span class="${prof>=0?'profit':'loss'}" style="font-size:13px">(${prof>=0?'+':''}${money(prof,base)} ${t('profitWord')})</span></div>
+      <div class="row" style="margin-top:8px; align-items:flex-start">
+        <div>
+          <span class="big">${money(orderTotal(o),base)}</span> <span class="muted" style="font-size:12px">${t('salesWord')}</span>
+          <div class="sub">${t('cost')}: ${money(orderCost(o),base)} · <span class="${prof>=0?'profit':'loss'}">${t('profitWord')} ${prof>=0?'+':''}${money(prof,base)}</span></div>
+        </div>
         <span class="pill ${pillCls}">${pillTxt}</span>
       </div>
       ${thumbs?`<div class="thumbs">${thumbs}</div>`:''}
@@ -669,9 +671,14 @@ function removeItemRow(i){ editingOrderItems.splice(i,1); if(!editingOrderItems.
 function updOrderTotBar(){
   const base=db.settings.base;
   const tot=editingOrderItems.reduce((s,i)=>s+itemTotal(i),0);
-  const prof=tot-editingOrderItems.reduce((s,i)=>s+itemCost(i),0);
+  const cost=editingOrderItems.reduce((s,i)=>s+itemCost(i),0);
+  const prof=tot-cost;
   document.getElementById('orderTotBar').innerHTML=
-    `<span>${t('orderTotal')}: <b>${money(tot,base)}</b></span><span>${t('orderProfit')}: <b class="${prof>=0?'profit':'loss'}">${money(prof,base)}</b></span>`;
+    `<div style="width:100%; display:flex; flex-direction:column; gap:5px">
+      <div style="display:flex; justify-content:space-between"><span>${t('salesWord')}</span><b>${money(tot,base)}</b></div>
+      <div style="display:flex; justify-content:space-between"><span>${t('cost')}</span><b>${money(cost,base)}</b></div>
+      <div style="display:flex; justify-content:space-between"><span>${t('orderProfit')}</span><b class="${prof>=0?'profit':'loss'}">${money(prof,base)}</b></div>
+    </div>`;
 }
 function saveOrder(id){
   const storeId=document.getElementById('f_store').value||null;
