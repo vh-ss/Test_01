@@ -409,6 +409,10 @@ function money(n,cur){ return fmt(n)+" "+(CUR_SYM[cur]||cur); }
 // An order snapshots the exchange rates at the time it was recorded (o.rates), so
 // later rate updates don't change past orders. Legacy orders fall back to live rates.
 function orderRates(o){ return (o&&o.rates) || db.settings.rates; }
+const STATUS_PURCHASED=1; // "Викуплено" — at this point the FX rate is locked
+function ensureRateLock(o){ // freeze rates once the order is purchased (or beyond)
+  if((o.status||0)>=STATUS_PURCHASED && !o.rates){ o.rates=Object.assign({},db.settings.rates); o.rateBase=db.settings.base; }
+}
 function toBase(amount,cur,rates){ rates=rates||db.settings.rates; const r=rates[cur]; return amount*(r==null?1:r); }
 function itemQty(it){ return Number(it.qty)||1; }
 function itemTotal(it,rates){ return toBase(Number(it.priceForClient)||0, it.priceCur||db.settings.base, rates)*itemQty(it); } // base
@@ -540,6 +544,7 @@ function renderOrders(){
 function cycleStatus(id){
   const o=db.orders.find(x=>x.id===id); if(!o)return;
   o.status=((o.status||0)+1)%t('st').length;  // tap to advance, wraps back to Нове
+  ensureRateLock(o); // freeze FX rate once it reaches "Викуплено"
   save(); renderOrders();
 }
 
@@ -692,9 +697,9 @@ function saveOrder(id){
   const storeId=document.getElementById('f_store').value||null;
   const st=storeId&&storeById(storeId);
   const existing=id&&db.orders.find(x=>x.id===id);
-  // lock the FX rate at record time: snapshot on create, keep it on later edits
-  const rates=(existing&&existing.rates) || Object.assign({}, db.settings.rates);
-  const rateBase=(existing&&existing.rateBase) || db.settings.base;
+  // keep any existing locked rate; otherwise it gets locked below once status is "Викуплено"
+  const rates=(existing&&existing.rates) || null;
+  const rateBase=(existing&&existing.rateBase) || null;
   const o={
     id: id||uid(),
     storeId: storeId,
@@ -713,6 +718,7 @@ function saveOrder(id){
       link:i.link, photo:i.photo||''
     }))
   };
+  ensureRateLock(o); // lock FX rate now if the order is purchased or beyond
   if(id){ const idx=db.orders.findIndex(x=>x.id===id); db.orders[idx]=o; }
   else db.orders.push(o);
   save(); closeSheet(); renderOrders();
