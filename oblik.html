@@ -315,7 +315,7 @@ const I18N = {
     ratesUpdated:"Оновлено", monoLoading:"Завантаження курсів…",
     dataMgmt:"Дані", export:"Експорт у файл", import:"Імпорт з файлу",
     clearAll:"Очистити всі дані", install:"Встановлення",
-    installHint:"Відкрий цей файл у браузері телефона → меню → «Додати на головний екран».",
+    installHint:"Відкрий цей файл у браузері телефона → меню → «Додати на головний екран».", versionWord:"версія",
     confirmDelOrder:"Видалити це замовлення?", confirmDelClient:"Видалити клієнта? Його замовлення залишаться без клієнта.",
     confirmDelWatch:"Видалити товар з трекінгу?", confirmClear:"Видалити ВСІ дані без відновлення?",
     needClient:"Спочатку додай клієнта.", emptyOrders:"Замовлень ще немає", emptyClients:"Клієнтів ще немає",
@@ -373,7 +373,7 @@ const I18N = {
     ratesUpdated:"Updated", monoLoading:"Loading rates…",
     dataMgmt:"Data", export:"Export to file", import:"Import from file",
     clearAll:"Clear all data", install:"Install",
-    installHint:"Open this file in your phone browser → menu → “Add to Home Screen”.",
+    installHint:"Open this file in your phone browser → menu → “Add to Home Screen”.", versionWord:"version",
     confirmDelOrder:"Delete this order?", confirmDelClient:"Delete client? Their orders stay without a client.",
     confirmDelWatch:"Remove item from tracking?", confirmClear:"Delete ALL data permanently?",
     needClient:"Add a client first.", emptyOrders:"No orders yet", emptyClients:"No clients yet",
@@ -386,6 +386,7 @@ function t(k){ return (I18N[db.settings.lang]||I18N.ua)[k]; }
 
 /* ============ state ============ */
 const KEY="buyer_oblik_db";
+const APP_VERSION="1.0 · 2026-06-20"; // версія деплою — бампати вручну при змінах
 const CURRENCIES=["USD","EUR","PLN","UAH"];
 const CUR_SYM={USD:"$",EUR:"€",PLN:"zł",UAH:"₴"};
 const NETWORKS=["instagram","tiktok","threads","facebook","telegram","other"];
@@ -1298,7 +1299,8 @@ function renderSettings(){
     <div class="card">
       <div class="muted" style="margin-bottom:6px">${t('install')}</div>
       <div class="sub">${t('installHint')}</div>
-    </div>`;
+    </div>
+    <div style="text-align:center; font-size:11px; color:var(--muted); opacity:.55; margin:14px 0 4px">Dropper UA · ${t('versionWord')} ${esc(APP_VERSION)}</div>`;
 }
 // Switching base is safe: each amount stores its own currency. We re-express all
 // stored rates relative to the new base so existing figures stay consistent.
