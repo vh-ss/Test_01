@@ -275,6 +275,7 @@ const I18N = {
     ttnRequired:"Вкажи ТТН для посилки", selectItemsFirst:"Постав галочки на товарах", parcelDate:"Дата відправки",
     noTrackingForCarrier:"Для цього оператора авто-трекінгу немає", confirmDelParcel:"Видалити посилку? Товари повернуться у список на відправку.",
     parcelContents:"Вміст посилки",
+    menuShowOrder:"Показати замовлення", menuShowPhoto:"Показати збільшене фото", noPhoto:"У товару немає фото",
     addOrder:"Замовлення", addClient:"Клієнт", addStore:"Магазин", addWatch:"Товар", updatePrices:"Оновити ціни",
     searchOrders:"Пошук: клієнт, магазин, №, трек…", searchClients:"Пошук клієнта…", searchStores:"Пошук магазину…",
     chooseStore:"— оберіть магазин —", newStoreInline:"+ Новий", newStore:"Новий магазин", editStore:"Магазин",
@@ -345,6 +346,7 @@ const I18N = {
     ttnRequired:"Enter the parcel's tracking number", selectItemsFirst:"Tick some items", parcelDate:"Ship date",
     noTrackingForCarrier:"No auto-tracking for this carrier", confirmDelParcel:"Delete parcel? Items return to the to-ship list.",
     parcelContents:"Parcel contents",
+    menuShowOrder:"Show order", menuShowPhoto:"Show enlarged photo", noPhoto:"This item has no photo",
     addOrder:"Order", addClient:"Client", addStore:"Store", addWatch:"Item", updatePrices:"Update prices",
     searchOrders:"Search: client, store, №, tracking…", searchClients:"Search client…", searchStores:"Search store…",
     chooseStore:"— choose store —", newStoreInline:"+ New", newStore:"New store", editStore:"Store",
@@ -406,7 +408,7 @@ function t(k){ return (I18N[db.settings.lang]||I18N.ua)[k]; }
 
 /* ============ state ============ */
 const KEY="buyer_oblik_db";
-const APP_VERSION="1.1 · 2026-06-20"; // версія деплою — бампати вручну при змінах
+const APP_VERSION="1.2 · 2026-06-20"; // версія деплою — бампати вручну при змінах
 const CURRENCIES=["USD","EUR","PLN","UAH"];
 const CUR_SYM={USD:"$",EUR:"€",PLN:"zł",UAH:"₴"};
 const NETWORKS=["instagram","tiktok","threads","facebook","telegram","other"];
@@ -928,8 +930,12 @@ function renderShip(){
         <div class="row" style="align-items:center"><b>${esc(c?clientLabel(c):t('noClient'))}</b>
           <button class="btn sm" onclick="packSelected('${cid}')">${t('createParcel')}</button></div>
         <div style="margin-top:6px">${arr.map(x=>`
-          <label class="check" style="margin:7px 0"><input type="checkbox" class="packchk" data-cid="${cid}" value="${x.it.id}" checked>
-            <span style="min-width:0">${x.it.photo?`<img class="thumb" src="${esc(x.it.photo)}" alt="" style="width:26px;height:26px;vertical-align:middle;margin-right:6px">`:''}${esc(x.it.title||t('noName'))}${x.it.size?' ('+esc(x.it.size)+')':''} <span class="muted">· ${esc(storeName(x.o))} #${esc(x.o.orderNumber||'')}</span></span></label>`).join('')}</div>
+          <div class="row" style="align-items:center; gap:8px; margin:7px 0">
+            <input type="checkbox" class="packchk" data-cid="${cid}" value="${x.it.id}" checked style="width:20px;height:20px;flex:0 0 auto">
+            ${x.it.photo?`<img class="thumb" src="${esc(x.it.photo)}" alt="" style="width:30px;height:30px;flex:0 0 auto;cursor:pointer" onclick="showItemPhoto('${x.it.id}')">`:''}
+            <span style="flex:1; min-width:0">${esc(x.it.title||t('noName'))}${x.it.size?' ('+esc(x.it.size)+')':''} <span class="muted">· ${esc(storeName(x.o))} #${esc(x.o.orderNumber||'')}</span></span>
+            <button class="btn sm ghost" style="flex:0 0 auto" onclick="itemMenu('${x.it.id}')" aria-label="меню">⋯</button>
+          </div>`).join('')}</div>
       </div>`;
     }).join('');
   }
@@ -989,6 +995,31 @@ function trackParcel(id){
   const carr=carrierById(p.carrier);
   if(carr.url && p.ttn){ window.open(carr.url+encodeURIComponent(p.ttn),'_blank','noopener'); }
   else alert(t('noTrackingForCarrier'));
+}
+/* ----- per-item menu (show order / enlarged photo) ----- */
+function itemMenu(itemId){
+  const f=findItem(itemId); if(!f) return;
+  const it=f.it, o=f.o;
+  document.getElementById('sheet').innerHTML=`
+    <h2>${esc(it.title||t('noName'))}${it.size?` <span class="muted">(${esc(it.size)})</span>`:''}</h2>
+    <div class="sub" style="margin:-6px 0 14px">${esc(storeName(o))} #${esc(o.orderNumber||'')}</div>
+    <button class="btn sec" style="width:100%; margin-bottom:8px" onclick="showItemOrder('${itemId}')">📦 ${t('menuShowOrder')}</button>
+    <button class="btn sec" style="width:100%; margin-bottom:8px" onclick="showItemPhoto('${itemId}')">🖼️ ${t('menuShowPhoto')}</button>
+    <button class="btn" style="width:100%" onclick="closeSheet()">${t('cancel')}</button>`;
+  openSheet();
+}
+function showItemOrder(itemId){
+  const f=findItem(itemId); if(!f) return;
+  closeSheet(); openOrder(f.o.id);
+}
+function showItemPhoto(itemId){
+  const f=findItem(itemId); if(!f) return;
+  if(!f.it.photo){ alert(t('noPhoto')); return; }
+  document.getElementById('sheet').innerHTML=`
+    <img src="${esc(f.it.photo)}" alt="${esc(f.it.title||'')}" style="width:100%; border-radius:14px; display:block">
+    <div class="sub" style="text-align:center; margin-top:8px">${esc(f.it.title||t('noName'))}</div>
+    <button class="btn" style="width:100%; margin-top:12px" onclick="closeSheet()">${t('cancel')}</button>`;
+  openSheet();
 }
 
 /* ============ CLIENTS ============ */
