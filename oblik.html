@@ -278,6 +278,7 @@ const I18N = {
     client:"Клієнт", chooseClient:"— оберіть клієнта —", newClientInline:"+ Новий", noClient:"Без клієнта",
     store:"Магазин / сайт", orderNo:"№ замовлення", purchaseDate:"Дата викупу",
     currency:"Валюта", status:"Статус", tracking:"Трек-номер", clientPaidQ:"Клієнт оплатив",
+    paidAmountLabel:"Оплачено клієнтом", fullPay:"Повністю", remaining:"Залишок", partlyWord:"частково",
     items:"Товари", addItem:"+ Додати товар",
     title:"Назва товару", article:"Артикул", size:"Розмір", qty:"К-сть",
     cost:"Закупка", priceForClient:"Ціна клієнту", link:"Посилання", photo:"Фото",
@@ -340,6 +341,7 @@ const I18N = {
     client:"Client", chooseClient:"— choose client —", newClientInline:"+ New", noClient:"No client",
     store:"Store / site", orderNo:"Order №", purchaseDate:"Purchase date",
     currency:"Currency", status:"Status", tracking:"Tracking №", clientPaidQ:"Client paid",
+    paidAmountLabel:"Paid by client", fullPay:"Full", remaining:"Remaining", partlyWord:"partial",
     items:"Items", addItem:"+ Add item",
     title:"Product title", article:"Article", size:"Size", qty:"Qty",
     cost:"Cost", priceForClient:"Client price", link:"Link", photo:"Photo",
@@ -419,7 +421,8 @@ function normalize(d){
       if(!it.costCur)  it.costCur  = o.currency || 'USD';
       if(!it.priceCur) it.priceCur = o.currency || 'USD';
       if(it.clientId===undefined) it.clientId = o.clientId || null; // client moved to item level
-      if(it.paid===undefined)     it.paid     = !!o.clientPaid;     // payment is now per item
+      if(it.paid===undefined)     it.paid     = !!o.clientPaid;     // legacy flag
+      if(it.paidAmount===undefined) it.paidAmount = it.paid ? (Number(it.priceForClient)||0)*(Number(it.qty)||1) : 0; // partial-payment amount
       return it;
     });
     return o;
@@ -473,11 +476,18 @@ function orderClientsLabel(o){
   if(!names.length) return t('unknownClient');
   return names.length<=2 ? names.join(', ') : names.slice(0,2).join(', ')+' +'+(names.length-2);
 }
+// Partial payments: each item tracks paidAmount (in its priceCur). Helpers below.
+function itemSaleNative(it){ return (Number(it.priceForClient)||0)*itemQty(it); }      // total due, in priceCur
+function itemPaidNative(it){ const s=itemSaleNative(it); let p=Number(it.paidAmount)||0; return p<0?0:(p>s?s:p); }
+function itemUnpaidBase(it,rates){ return toBase(itemSaleNative(it)-itemPaidNative(it), it.priceCur||db.settings.base, rates); }
+function itemPaidState(it){ const s=itemSaleNative(it), p=itemPaidNative(it);
+  if(s<=0) return 'none'; if(p>=s-0.001) return 'all'; if(p>0.001) return 'partial'; return 'none'; }
 function orderPaidState(o){ const its=o.items||[]; if(!its.length)return 'none';
-  const p=its.filter(i=>i.paid).length; return p===0?'none':p===its.length?'all':'partial'; }
+  const r=orderRates(o), tot=orderTotal(o); let unpaid=0; its.forEach(i=>unpaid+=itemUnpaidBase(i,r));
+  if(unpaid<=0.01) return 'all'; if(unpaid>=tot-0.01) return 'none'; return 'partial'; }
 function clientItems(o,cid){ return (o.items||[]).filter(i=>i.clientId===cid); }
 function clientSubtotalBase(o,cid){ const r=orderRates(o); return clientItems(o,cid).reduce((s,i)=>s+itemTotal(i,r),0); }
-function clientUnpaidBase(cid){ let s=0; db.orders.forEach(o=>{ const r=orderRates(o); clientItems(o,cid).forEach(i=>{ if(!i.paid)s+=itemTotal(i,r); }); }); return s; }
+function clientUnpaidBase(cid){ let s=0; db.orders.forEach(o=>{ const r=orderRates(o); clientItems(o,cid).forEach(i=>{ s+=itemUnpaidBase(i,r); }); }); return s; }
 function clientLabel(c){ if(!c)return t('unknownClient'); return c.fullName||c.nick||((c.socials||[])[0]&&c.socials[0].val)||((c.phones||[])[0])||t('noName'); }
 function socialUrl(net,val){
   val=(val||'').trim(); if(!val)return '';
@@ -611,7 +621,7 @@ function openOrder(id){
   const o = id ? db.orders.find(x=>x.id===id) : null;
   const base = db.settings.base;
   editOrderRates = (o&&o.rates) || db.settings.rates; // existing orders keep their locked rate
-  editingOrderItems = o ? JSON.parse(JSON.stringify(o.items||[])) : [{title:'',article:'',size:'',qty:1,cost:'',costCur:'USD',priceForClient:'',priceCur:base,clientId:'',paid:false,link:'',photo:'',_open:true}];
+  editingOrderItems = o ? JSON.parse(JSON.stringify(o.items||[])) : [{title:'',article:'',size:'',qty:1,cost:'',costCur:'USD',priceForClient:'',priceCur:base,clientId:'',paidAmount:0,link:'',photo:'',_open:true}];
   const storeOpts = db.stores.map(s=>`<option value="${s.id}" ${o&&o.storeId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
   const sheet=document.getElementById('sheet');
   sheet.innerHTML=`
@@ -656,7 +666,7 @@ function itemCollapsed(it,idx,base){
       ${it.photo?`<img class="thumb" src="${esc(it.photo)}" alt="" style="flex:0 0 auto">`:''}
       <div onclick="toggleItem(${idx})" style="flex:1; min-width:0; cursor:pointer">
         <b>${esc(it.title||t('noName'))}</b>${it.size?` <span class="muted">(${esc(it.size)})</span>`:''}${it.qty>1?` <span class="muted">×${it.qty}</span>`:''}
-        <div class="sub">👤 ${it.clientId?esc(clientLabel(clientById(it.clientId))):t('noClient')} ${it.paid?'✅':''}</div>
+        <div class="sub">👤 ${it.clientId?esc(clientLabel(clientById(it.clientId))):t('noClient')} ${itemPaidBadge(it)}</div>
         <div class="sub">${money(itemTotal(it,editOrderRates),base)}${has?` · <span class="${profB>=0?'profit':'loss'}">${money(profB,base)}</span>`:''}</div>
       </div>
       <button class="btn sm ghost" onclick="toggleItem(${idx})" title="${t('edit')}">✏️</button>
@@ -692,7 +702,13 @@ function itemExpanded(it,idx,base){
       <div class="field"><label>${t('priceForClient')}</label>
         <div class="linkrow"><input type="number" step="0.01" value="${esc(it.priceForClient)}" oninput="updItem(${idx},'priceForClient',this.value)" style="flex:1; min-width:0">${curSelect(idx,'priceCur',it.priceCur||base)}</div></div>
       <div class="sub" id="itemprof_${idx}" style="text-align:right; margin-top:2px">${has?`${t('orderProfit')}: <b class="${profB>=0?'profit':'loss'}">${money(profB,base)}</b>`:''}</div>
-      <div class="check" style="margin:6px 0"><input type="checkbox" id="paid_${idx}" ${it.paid?'checked':''} onchange="updItem(${idx},'paid',this.checked)"><label style="margin:0">${t('clientPaidQ')}</label></div>
+      <div class="field"><label>${t('paidAmountLabel')} (${it.priceCur||base})</label>
+        <div class="linkrow">
+          <input type="number" step="0.01" value="${esc(it.paidAmount||'')}" oninput="updItem(${idx},'paidAmount',this.value)" placeholder="0" style="flex:1; min-width:0">
+          <button class="btn sm sec" onclick="markFullPaid(${idx})">${t('fullPay')}</button>
+        </div>
+        <div class="sub" id="remain_${idx}" style="margin-top:3px">${itemPayHint(it)}</div>
+      </div>
       <div class="field"><label>${t('link')}</label><input value="${esc(it.link)}" oninput="updItem(${idx},'link',this.value)"></div>
       <div class="field"><label>${t('photo')}</label>
         <div class="linkrow">
@@ -713,11 +729,21 @@ function renderItemEditors(){
   updOrderTotBar();
 }
 function toggleItem(idx){ editingOrderItems[idx]._open=!editingOrderItems[idx]._open; renderItemEditors(); }
+function itemPayHint(it){ // "Залишок: X" / "Оплачено повністю"
+  const cur=it.priceCur||db.settings.base, due=itemSaleNative(it), paid=itemPaidNative(it), rem=due-paid;
+  if(due<=0) return '';
+  if(rem<=0.001) return '<span class="profit">✓ '+t('paid')+'</span>';
+  return t('remaining')+': '+money(rem,cur)+(paid>0.001?' · '+t('partlyWord'):'');
+}
+function itemPaidBadge(it){ const s=itemPaidState(it);
+  if(s==='all') return '✅'; if(s==='partial') return '<span class="pill st0" style="padding:1px 6px">'+t('partlyWord')+'</span>'; return ''; }
+function markFullPaid(idx){ editingOrderItems[idx].paidAmount=itemSaleNative(editingOrderItems[idx]); renderItemEditors(); }
 function updItem(idx,key,val){
   editingOrderItems[idx][key]=val;
   if(key==='costCur'||key==='priceCur'){ renderItemEditors(); return; }  // discrete change → full re-render
   if(key==='photo' && val===''){ renderItemEditors(); return; }          // cleared photo → refresh thumbnail
-  if(['cost','priceForClient','qty'].includes(key)){ updOrderTotBar(); updItemProfit(idx); } // live, keep focus
+  if(['cost','priceForClient','qty'].includes(key)){ updOrderTotBar(); updItemProfit(idx); const el=document.getElementById('remain_'+idx); if(el) el.innerHTML=itemPayHint(editingOrderItems[idx]); }
+  if(key==='paidAmount'){ const el=document.getElementById('remain_'+idx); if(el) el.innerHTML=itemPayHint(editingOrderItems[idx]); } // live remaining, keep focus
 }
 function attachPhoto(idx,input){
   const file=input.files&&input.files[0]; if(!file)return;
@@ -744,7 +770,7 @@ function updItemProfit(idx){
 function addItemRow(){
   const last=editingOrderItems[editingOrderItems.length-1];
   const cur=(last&&last.costCur)||'USD'; // reuse previous item's purchase currency as a convenience
-  editingOrderItems.push({title:'',article:'',size:'',qty:1,cost:'',costCur:cur,priceForClient:'',priceCur:db.settings.base,clientId:'',paid:false,link:'',photo:'',_open:true});
+  editingOrderItems.push({title:'',article:'',size:'',qty:1,cost:'',costCur:cur,priceForClient:'',priceCur:db.settings.base,clientId:'',paidAmount:0,link:'',photo:'',_open:true});
   renderItemEditors();
 }
 function pickItemClient(idx,val){ // resolve typed/selected client label → id (autocomplete via datalist)
@@ -795,7 +821,7 @@ function saveOrder(id){
       qty:Number(i.qty)||1,
       cost:Number(i.cost)||0, costCur:i.costCur||'USD',
       priceForClient:Number(i.priceForClient)||0, priceCur:i.priceCur||db.settings.base,
-      clientId:i.clientId||null, paid:!!i.paid,
+      clientId:i.clientId||null, paidAmount:Math.max(0,Number(i.paidAmount)||0),
       link:i.link, photo:i.photo||''
     }))
   };
@@ -867,11 +893,13 @@ function openClient(id){
     const ords=db.orders.filter(o=>orderClientIds(o).includes(c.id)).sort((a,b)=>(b.purchaseDate||'').localeCompare(a.purchaseDate||''));
     if(ords.length){
       ordersHtml=`<h2 style="font-size:15px;margin:16px 0 8px">${t('navOrders')} (${ords.length})</h2>`+
-        ords.map(o=>{ const its=clientItems(o,c.id); const allPaid=its.every(i=>i.paid);
+        ords.map(o=>{ const r=orderRates(o), its=clientItems(o,c.id);
+          const unp=its.reduce((s,i)=>s+itemUnpaidBase(i,r),0), sub=clientSubtotalBase(o,c.id);
+          const pay = unp<=0.01?t('paid') : (unp>=sub-0.01?t('unpaid') : t('partlyWord'));
           return `<div class="itemcard" onclick="closeSheet();openOrder('${o.id}')">
           <div class="row"><b>${esc(storeName(o))} ${o.orderNumber?'#'+esc(o.orderNumber):''}</b>
           <span class="pill st${o.status||0}">${esc(t('st')[o.status||0])}</span></div>
-          <div class="sub">${esc(o.purchaseDate||'')} · ${money(clientSubtotalBase(o,c.id),db.settings.base)} · ${allPaid?t('paid'):t('unpaid')}</div>
+          <div class="sub">${esc(o.purchaseDate||'')} · ${money(sub,db.settings.base)} · ${pay}</div>
         </div>`; }).join('');
     }
   }
@@ -1215,7 +1243,7 @@ function renderIncome(){
   const stCount=t('st').map((s,i)=>({s,i,n:orders.filter(o=>o.status===i).length}));
   // distinct clients with at least one unpaid item
   const unpaidSet=new Set();
-  orders.forEach(o=>(o.items||[]).forEach(i=>{ if(!i.paid && i.clientId) unpaidSet.add(i.clientId); }));
+  orders.forEach(o=>{ const r=orderRates(o); (o.items||[]).forEach(i=>{ if(i.clientId && itemUnpaidBase(i,r)>0.01) unpaidSet.add(i.clientId); }); });
   const unpaidCount=unpaidSet.size;
   // revenue/profit by store (per order) and by client (per item, since clients are per item)
   const byStore={}, byClient={};
