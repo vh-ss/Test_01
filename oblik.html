@@ -206,6 +206,11 @@
     <div id="ordersList"></div>
   </section>
 
+  <!-- SHIP -->
+  <section id="tab-ship" class="tab">
+    <div id="shipView"></div>
+  </section>
+
   <!-- CLIENTS -->
   <section id="tab-clients" class="tab">
     <div class="toolbar">
@@ -248,6 +253,7 @@
 
 <nav>
   <button id="nav-orders" class="active" onclick="switchTab('orders')"><span class="ic">📦</span><span data-t="navOrders"></span></button>
+  <button id="nav-ship" onclick="switchTab('ship')"><span class="ic">🚚</span><span data-t="navShip"></span></button>
   <button id="nav-clients" onclick="switchTab('clients')"><span class="ic">👥</span><span data-t="navClients"></span></button>
   <button id="nav-stores" onclick="switchTab('stores')"><span class="ic">🏬</span><span data-t="navStores"></span></button>
   <button id="nav-watches" onclick="switchTab('watches')"><span class="ic">📉</span><span data-t="navWatches"></span></button>
@@ -261,8 +267,14 @@
 /* ============ i18n ============ */
 const I18N = {
   ua:{
-    appTitle:"Облік викупів", navOrders:"Замовлення", navClients:"Клієнти", navStores:"Магазини", navWatches:"Ціни",
+    appTitle:"Облік викупів", navOrders:"Замовлення", navShip:"На відправку", navClients:"Клієнти", navStores:"Магазини", navWatches:"Ціни",
     navIncome:"Дохід", navSettings:"Дані",
+    parcelsTitle:"Посилки", toPackTitle:"Готові до відправки", emptyShip:"Немає товарів до відправки",
+    createParcel:"Створити посилку", newParcel:"Нова посилка", editParcel:"Посилка", carrier:"Поштовий оператор",
+    ttn:"ТТН (номер накладної)", track:"Трекінг", shipped:"Відправлено", itemsWord:"шт.",
+    ttnRequired:"Вкажи ТТН для посилки", selectItemsFirst:"Постав галочки на товарах", parcelDate:"Дата відправки",
+    noTrackingForCarrier:"Для цього оператора авто-трекінгу немає", confirmDelParcel:"Видалити посилку? Товари повернуться у список на відправку.",
+    parcelContents:"Вміст посилки",
     addOrder:"Замовлення", addClient:"Клієнт", addStore:"Магазин", addWatch:"Товар", updatePrices:"Оновити ціни",
     searchOrders:"Пошук: клієнт, магазин, №, трек…", searchClients:"Пошук клієнта…", searchStores:"Пошук магазину…",
     chooseStore:"— оберіть магазин —", newStoreInline:"+ Новий", newStore:"Новий магазин", editStore:"Магазин",
@@ -325,8 +337,14 @@ const I18N = {
     profitWord:"приб.",
   },
   en:{
-    appTitle:"Buyer Tracker", navOrders:"Orders", navClients:"Clients", navStores:"Stores", navWatches:"Prices",
+    appTitle:"Buyer Tracker", navOrders:"Orders", navShip:"To ship", navClients:"Clients", navStores:"Stores", navWatches:"Prices",
     navIncome:"Income", navSettings:"Data",
+    parcelsTitle:"Parcels", toPackTitle:"Ready to ship", emptyShip:"Nothing to ship",
+    createParcel:"Create parcel", newParcel:"New parcel", editParcel:"Parcel", carrier:"Carrier",
+    ttn:"Tracking № (waybill)", track:"Track", shipped:"Shipped", itemsWord:"pcs",
+    ttnRequired:"Enter the parcel's tracking number", selectItemsFirst:"Tick some items", parcelDate:"Ship date",
+    noTrackingForCarrier:"No auto-tracking for this carrier", confirmDelParcel:"Delete parcel? Items return to the to-ship list.",
+    parcelContents:"Parcel contents",
     addOrder:"Order", addClient:"Client", addStore:"Store", addWatch:"Item", updatePrices:"Update prices",
     searchOrders:"Search: client, store, №, tracking…", searchClients:"Search client…", searchStores:"Search store…",
     chooseStore:"— choose store —", newStoreInline:"+ New", newStore:"New store", editStore:"Store",
@@ -395,6 +413,16 @@ const NETWORKS=["instagram","tiktok","threads","facebook","telegram","other"];
 const NET_ICON={instagram:"📷",tiktok:"🎵",threads:"🧵",facebook:"📘",telegram:"✈️",other:"🔗"};
 const DELIV=["novaposhta","ukrposhta","meest","rozetka","courier","pickup","other"];
 const DELIV_ICON={novaposhta:"📦",ukrposhta:"📮",meest:"📦",rozetka:"🛒",courier:"🚚",pickup:"🏬",other:"📍"};
+// Postal carriers — each with its own tracking URL (empty = no auto-tracking)
+const CARRIERS=[
+  {id:'novaposhta', name:'Нова Пошта', url:'https://novaposhta.ua/tracking/?cargo_number='},
+  {id:'ukrposhta',  name:'Укрпошта',   url:'https://track.ukrposhta.ua/tracking_UA.html?barcode='},
+  {id:'meest',      name:'Meest',       url:'https://meest.com/track/?code='},
+  {id:'justin',     name:'Justin',      url:'https://justin.ua/track/?ttn='},
+  {id:'other',      name:'Інше',        url:''}
+];
+function carrierById(id){ return CARRIERS.find(c=>c.id===id)||CARRIERS[CARRIERS.length-1]; }
+function carrierName(c){ return c.id==='other' ? t('delivNames').other : c.name; }
 let db=load();
 let editingOrderItems=[]; // working copy while editing order
 
@@ -418,6 +446,7 @@ function normalize(d){
   });
   d.orders=(d.orders||[]).map(o=>{
     o.items=(o.items||[]).map(it=>{
+      if(!it.id) it.id=uid(); // stable id so parcels can reference items
       if(!it.costCur)  it.costCur  = o.currency || 'USD';
       if(!it.priceCur) it.priceCur = o.currency || 'USD';
       if(it.clientId===undefined) it.clientId = o.clientId || null; // client moved to item level
@@ -438,6 +467,7 @@ function normalize(d){
     o.storeId=st.id;
   });
   d.watches=d.watches||[];
+  d.parcels=d.parcels||[]; // shipments: {id, clientId, carrier, ttn, date, items:[itemId...]}
   d.settings=Object.assign({lang:"ua", base:"USD", theme:"auto", rates:{USD:1, EUR:1.08, PLN:0.25, UAH:0.024}}, d.settings||{});
   d.settings.rates=Object.assign({USD:1,EUR:1.08,PLN:0.25,UAH:0.024}, d.settings.rates||{});
   return d;
@@ -510,6 +540,7 @@ function switchTab(name){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById('nav-'+name).classList.add('active');
   if(name==='orders')renderOrders();
+  if(name==='ship')renderShip();
   if(name==='clients')renderClients();
   if(name==='stores')renderStores();
   if(name==='watches')renderWatches();
@@ -548,7 +579,7 @@ function applyStaticTexts(){
   document.getElementById('storeSearch').placeholder=t('searchStores');
 }
 function renderAll(){
-  renderOrders(); renderClients(); renderStores(); renderWatches(); renderIncome(); renderSettings();
+  renderOrders(); renderShip(); renderClients(); renderStores(); renderWatches(); renderIncome(); renderSettings();
 }
 
 /* ============ ORDERS ============ */
@@ -817,6 +848,7 @@ function saveOrder(id){
     trackingNumber: document.getElementById('f_track').value.trim(),
     rates: rates, rateBase: rateBase,
     items: editingOrderItems.filter(i=>i.title||i.priceForClient||i.cost).map(i=>({
+      id:i.id||uid(),
       title:i.title.trim?i.title.trim():i.title, article:i.article, size:i.size,
       qty:Number(i.qty)||1,
       cost:Number(i.cost)||0, costCur:i.costCur||'USD',
@@ -833,6 +865,114 @@ function saveOrder(id){
 function deleteOrder(id){
   if(!confirm(t('confirmDelOrder')))return;
   db.orders=db.orders.filter(o=>o.id!==id); save(); closeSheet(); renderOrders();
+}
+
+/* ============ SHIP (parcels) ============ */
+function packedItemIds(){ const s=new Set(); (db.parcels||[]).forEach(p=>(p.items||[]).forEach(id=>s.add(id))); return s; }
+function findItem(id){ for(const o of db.orders){ for(const it of (o.items||[])){ if(it.id===id) return {it,o}; } } return null; }
+function orderFullyPacked(o,packed){ const its=o.items||[]; return its.length>0 && its.every(i=>packed.has(i.id)); }
+function renderShip(){
+  const wrap=document.getElementById('shipView'); const base=db.settings.base;
+  const packed=packedItemIds();
+  let html='';
+  // active parcels
+  const parcels=(db.parcels||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(parcels.length){
+    html+=`<div class="muted" style="margin:4px 0 8px">${t('parcelsTitle')} (${parcels.length})</div>`;
+    html+=parcels.map(p=>{
+      const c=clientById(p.clientId), carr=carrierById(p.carrier);
+      const its=(p.items||[]).map(findItem).filter(Boolean);
+      const titles=its.map(x=>esc(x.it.title||t('noName'))).join(' · ');
+      const canTrack=!!carr.url && p.ttn;
+      return `<div class="card">
+        <div class="row">
+          <div style="min-width:0"><b>${esc(clientLabel(c))}</b>
+            <div class="sub">🚚 ${esc(carrierName(carr))} · ${its.length} ${t('itemsWord')}${p.date?' · '+esc(p.date):''}</div></div>
+          <span class="pill st2">${t('shipped')}</span>
+        </div>
+        <div class="sub" style="margin-top:4px">${t('ttn')}: <b>${esc(p.ttn||'—')}</b></div>
+        ${titles?`<div class="sub">${titles}</div>`:''}
+        <div class="row" style="margin-top:8px; gap:6px">
+          ${canTrack?`<button class="btn sm" onclick="trackParcel('${p.id}')">🔎 ${t('track')}</button>`:''}
+          <button class="btn sm sec" onclick="openParcel(null,null,'${p.id}')">${t('edit')}</button>
+          <button class="btn sm danger" onclick="deleteParcel('${p.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  // ready to ship: received (status "Отримано") items not yet packed, grouped by client
+  const ready=[]; db.orders.forEach(o=>{ if(o.status===3) (o.items||[]).forEach(it=>{ if(!packed.has(it.id)) ready.push({it,o}); }); });
+  html+=`<div class="muted" style="margin:14px 0 8px">${t('toPackTitle')} (${ready.length})</div>`;
+  if(!ready.length){ html+=emptyBox('🚚',t('emptyShip')); }
+  else {
+    const byClient={}; ready.forEach(x=>{ const k=x.it.clientId||'_'; (byClient[k]=byClient[k]||[]).push(x); });
+    html+=Object.entries(byClient).map(([cid,arr])=>{
+      const c=cid==='_'?null:clientById(cid);
+      return `<div class="card">
+        <div class="row" style="align-items:center"><b>${esc(c?clientLabel(c):t('noClient'))}</b>
+          <button class="btn sm" onclick="packSelected('${cid}')">${t('createParcel')}</button></div>
+        <div style="margin-top:6px">${arr.map(x=>`
+          <label class="check" style="margin:7px 0"><input type="checkbox" class="packchk" data-cid="${cid}" value="${x.it.id}" checked>
+            <span style="min-width:0">${x.it.photo?`<img class="thumb" src="${esc(x.it.photo)}" alt="" style="width:26px;height:26px;vertical-align:middle;margin-right:6px">`:''}${esc(x.it.title||t('noName'))}${x.it.size?' ('+esc(x.it.size)+')':''} <span class="muted">· ${esc(storeName(x.o))} #${esc(x.o.orderNumber||'')}</span></span></label>`).join('')}</div>
+      </div>`;
+    }).join('');
+  }
+  wrap.innerHTML=html;
+}
+function packSelected(cid){
+  const ids=[...document.querySelectorAll('.packchk[data-cid="'+cid+'"]:checked')].map(c=>c.value);
+  if(!ids.length){ alert(t('selectItemsFirst')); return; }
+  openParcel(cid===''||cid==='_'?null:cid, ids, null);
+}
+function openParcel(clientId, ids, parcelId){
+  const p = parcelId ? (db.parcels||[]).find(x=>x.id===parcelId) : null;
+  if(p){ clientId=p.clientId; ids=p.items.slice(); }
+  const c=clientById(clientId);
+  // default carrier from the client's first address method, else Нова Пошта
+  let defCarrier = p ? p.carrier : 'novaposhta';
+  if(!p && c){ const m=(c.addresses||[])[0]&&c.addresses[0].method; if(CARRIERS.some(x=>x.id===m)) defCarrier=m; }
+  const its=(ids||[]).map(findItem).filter(Boolean);
+  const sheet=document.getElementById('sheet');
+  sheet.innerHTML=`
+    <h2>${p?t('editParcel'):t('newParcel')}</h2>
+    <div class="field"><label>${t('client')}</label><input value="${esc(clientLabel(c))}" disabled></div>
+    <div class="field"><label>${t('carrier')}</label>
+      <select id="p_carrier" class="search" style="width:100%">${CARRIERS.map(x=>`<option value="${x.id}" ${defCarrier===x.id?'selected':''}>${esc(carrierName(x))}</option>`).join('')}</select>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>${t('ttn')}</label><input id="p_ttn" value="${esc(p?p.ttn:'')}" placeholder="20450000000000"></div>
+      <div class="field"><label>${t('parcelDate')}</label><input id="p_date" type="date" value="${esc(p?p.date:todayISO())}"></div>
+    </div>
+    <div class="muted" style="margin:8px 0 4px">${t('parcelContents')} (${its.length})</div>
+    ${its.map(x=>`<div class="itemcard" style="padding:9px 11px"><b>${esc(x.it.title||t('noName'))}</b>${x.it.size?` <span class="muted">(${esc(x.it.size)})</span>`:''}<div class="sub">${esc(storeName(x.o))} #${esc(x.o.orderNumber||'')}</div></div>`).join('')||`<div class="muted">—</div>`}
+    <div class="sheet-actions">
+      ${p?`<button class="btn danger" onclick="deleteParcel('${p.id}')">${t('del')}</button>`:''}
+      <button class="btn sec" onclick="closeSheet()">${t('cancel')}</button>
+      <button class="btn" onclick='saveParcel(${JSON.stringify(parcelId||null)}, ${JSON.stringify(clientId||null)}, ${JSON.stringify(ids||[])})'>${t('save')}</button>
+    </div>`;
+  openSheet();
+}
+function saveParcel(parcelId, clientId, ids){
+  const carrier=document.getElementById('p_carrier').value;
+  const ttn=document.getElementById('p_ttn').value.trim();
+  const date=document.getElementById('p_date').value;
+  if(!ttn){ alert(t('ttnRequired')); return; }
+  if(parcelId){ const p=db.parcels.find(x=>x.id===parcelId); p.carrier=carrier; p.ttn=ttn; p.date=date; }
+  else db.parcels.push({id:uid(), clientId:clientId||null, carrier, ttn, date, items:(ids||[]).slice()});
+  // auto-advance fully-packed orders to "Видано клієнту"
+  const packed=packedItemIds();
+  db.orders.forEach(o=>{ if(o.status===3 && orderFullyPacked(o,packed)) o.status=4; });
+  save(); closeSheet(); renderShip(); renderOrders();
+}
+function deleteParcel(id){
+  if(!confirm(t('confirmDelParcel')))return;
+  db.parcels=db.parcels.filter(p=>p.id!==id); save(); closeSheet(); renderShip(); renderOrders();
+}
+function trackParcel(id){
+  const p=(db.parcels||[]).find(x=>x.id===id); if(!p)return;
+  const carr=carrierById(p.carrier);
+  if(carr.url && p.ttn){ window.open(carr.url+encodeURIComponent(p.ttn),'_blank','noopener'); }
+  else alert(t('noTrackingForCarrier'));
 }
 
 /* ============ CLIENTS ============ */
@@ -1400,7 +1540,7 @@ function closeSheet(){ document.getElementById('overlay').classList.remove('open
 document.getElementById('overlay').addEventListener('click',e=>{ if(e.target.id==='overlay')closeSheet(); });
 
 /* ============ swipe between tabs ============ */
-const TAB_ORDER=['orders','clients','stores','watches','income','settings'];
+const TAB_ORDER=['orders','ship','clients','stores','watches','income','settings'];
 function handleSwipe(dx,dy){
   if(document.getElementById('overlay').classList.contains('open')) return; // not while a sheet is open
   if(Math.abs(dx)<60 || Math.abs(dx)<Math.abs(dy)*1.5) return;              // mostly-horizontal, min distance
