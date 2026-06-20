@@ -104,6 +104,7 @@
   }
   nav button.active{color:var(--accent2)}
   nav .ic{font-size:21px; line-height:1}
+  nav .ic svg{display:block; width:23px; height:23px}
   /* modal */
   .overlay{
     position:fixed; inset:0; background:rgba(5,5,15,.7); z-index:50; display:none;
@@ -252,13 +253,13 @@
 </main>
 
 <nav>
-  <button id="nav-orders" class="active" onclick="switchTab('orders')"><span class="ic">📦</span><span data-t="navOrders"></span></button>
-  <button id="nav-ship" onclick="switchTab('ship')"><span class="ic">🚚</span><span data-t="navShip"></span></button>
-  <button id="nav-clients" onclick="switchTab('clients')"><span class="ic">👥</span><span data-t="navClients"></span></button>
-  <button id="nav-stores" onclick="switchTab('stores')"><span class="ic">🏬</span><span data-t="navStores"></span></button>
-  <button id="nav-watches" onclick="switchTab('watches')"><span class="ic">📉</span><span data-t="navWatches"></span></button>
-  <button id="nav-income" onclick="switchTab('income')"><span class="ic">💰</span><span data-t="navIncome"></span></button>
-  <button id="nav-settings" onclick="switchTab('settings')"><span class="ic">⚙️</span><span data-t="navSettings"></span></button>
+  <button id="nav-orders" class="active" onclick="switchTab('orders')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8h13l-1 11.5a1 1 0 0 1-1 .9H7.5a1 1 0 0 1-1-.9L5.5 8Z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg></span><span data-t="navOrders"></span></button>
+  <button id="nav-ship" onclick="switchTab('ship')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="11" height="9" rx="1.3"/><path d="M13.5 16V10h3.3l2.7 3v3"/><circle cx="6.6" cy="18" r="1.8"/><circle cx="16.6" cy="18" r="1.8"/></svg></span><span data-t="navShip"></span></button>
+  <button id="nav-clients" onclick="switchTab('clients')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span><span data-t="navClients"></span></button>
+  <button id="nav-stores" onclick="switchTab('stores')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9 5.5 4.5h13L20.5 9"/><path d="M5 9v10.5h14V9"/><path d="M10 20v-6h4v6"/></svg></span><span data-t="navStores"></span></button>
+  <button id="nav-watches" onclick="switchTab('watches')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5V4.6a1.6 1.6 0 0 1 1.6-1.6h5.9L21 13.4a1.6 1.6 0 0 1 0 2.2l-5.4 5.4a1.6 1.6 0 0 1-2.2 0L3 10.5Z"/><circle cx="7.6" cy="7.6" r="1.4"/></svg></span><span data-t="navWatches"></span></button>
+  <button id="nav-income" onclick="switchTab('income')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M7 20v-5.5"/><path d="M12 20V9"/><path d="M17 20v-8"/></svg></span><span data-t="navIncome"></span></button>
+  <button id="nav-settings" onclick="switchTab('settings')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h18"/><circle cx="16" cy="7" r="2.2" fill="var(--nav)"/><circle cx="9" cy="12" r="2.2" fill="var(--nav)"/><circle cx="14" cy="17" r="2.2" fill="var(--nav)"/></svg></span><span data-t="navSettings"></span></button>
 </nav>
 
 <div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
