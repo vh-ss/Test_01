@@ -413,7 +413,7 @@ function t(k){ return (I18N[db.settings.lang]||I18N.ua)[k]; }
 
 /* ============ state ============ */
 const KEY="buyer_oblik_db";
-const APP_VERSION="1.4 · 2026-06-20"; // версія деплою — бампати вручну при змінах
+const APP_VERSION="1.5 · 2026-06-20"; // версія деплою — бампати вручну при змінах
 const CURRENCIES=["USD","EUR","PLN","UAH"];
 const CUR_SYM={USD:"$",EUR:"€",PLN:"zł",UAH:"₴"};
 const NETWORKS=["instagram","tiktok","threads","facebook","telegram","other"];
@@ -1441,19 +1441,42 @@ function priceNum(s){ s=(s||'').replace(/[^\d.,]/g,''); if(!s) return null;
   if(dec){ s=s.split(dec==='.'?',':'.').join(''); if(dec===',') s=s.replace(',','.'); }
   const n=parseFloat(s); return isNaN(n)?null:n;
 }
-function extractPrice(html){
-  let m;
-  m=html.match(/property=["'](?:product:price:amount|og:price:amount)["']\s+content=["']([\d.,\s]+)["']/i)
-   || html.match(/content=["']([\d.,\s]+)["']\s+property=["'](?:product:price:amount|og:price:amount)["']/i);
-  if(m) return priceNum(m[1]);
-  m=html.match(/itemprop=["']price["'][^>]*content=["']([\d.,\s]+)["']/i)
-   || html.match(/content=["']([\d.,\s]+)["'][^>]*itemprop=["']price["']/i);
-  if(m) return priceNum(m[1]);
-  m=html.match(/"(?:price|lowPrice|salePrice|currentPrice)"\s*:\s*"?([\d.,]{1,14})"?/i);
-  if(m) return priceNum(m[1]);
-  m=html.match(/[$€£₴]\s?(\d{1,3}(?:[.,\s]\d{3})*(?:[.,]\d{2})?)/);       // visible currency price
-  if(m) return priceNum(m[1]);
+// Find the offers.price inside a parsed JSON-LD object (the sellable/sale price; ignores struck list prices).
+function findOfferPrice(o){
+  if(!o||typeof o!=='object') return null;
+  if(Array.isArray(o)){ for(const x of o){ const p=findOfferPrice(x); if(p!=null)return p; } return null; }
+  if(o.offers){ const off=Array.isArray(o.offers)?o.offers[0]:o.offers;
+    if(off&&typeof off==='object'){ const v=off.price!=null?off.price:(off.lowPrice!=null?off.lowPrice:null); if(v!=null){ const n=priceNum(String(v)); if(n!=null)return n; } } }
+  for(const k in o){ if(o[k]&&typeof o[k]==='object'){ const p=findOfferPrice(o[k]); if(p!=null)return p; } }
   return null;
+}
+function priceFromJsonLd(html){
+  const rx=/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi; let m;
+  while((m=rx.exec(html))){ let d; try{ d=JSON.parse(m[1].trim()); }catch(e){ continue; } const p=findOfferPrice(d); if(p!=null) return p; }
+  return null;
+}
+// Read a price-bearing JSON key: plain number or nested {amount|value}. (Asos "current", Shein "salePrice", etc.)
+function keyPrice(html,key){
+  let m=html.match(new RegExp('"'+key+'"\\s*:\\s*"?(\\d[\\d.,]*\\d|\\d)','i')); if(m) return priceNum(m[1]);
+  m=html.match(new RegExp('"'+key+'"\\s*:\\s*\\{[^{}]*?"(?:amount|value)"\\s*:\\s*"?(\\d[\\d.,]*\\d|\\d)','i')); if(m) return priceNum(m[1]);
+  return null;
+}
+function extractPrice(html){
+  // 1) JSON-LD offers — the actual sellable price (already the discounted one)
+  let p=priceFromJsonLd(html); if(p!=null) return p;
+  // 2) discount-aware keys — prefer current/sale over original/was/list
+  for(const k of ['salePrice','currentPrice','nowPrice','finalPrice','specialPrice','offerPrice','discountedPrice','current']){
+    p=keyPrice(html,k); if(p!=null) return p;
+  }
+  // 3) price meta tags
+  let m=html.match(/property=["'](?:product:price:amount|og:price:amount)["']\s+content=["']([\d.,\s]+)["']/i)
+     || html.match(/content=["']([\d.,\s]+)["']\s+property=["'](?:product:price:amount|og:price:amount)["']/i)
+     || html.match(/itemprop=["']price["'][^>]*content=["']([\d.,\s]+)["']/i);
+  if(m) return priceNum(m[1]);
+  // 4) generic "price" key, then visible currency amount
+  p=keyPrice(html,'price'); if(p!=null) return p;
+  m=html.match(/[$€£₴]\s?(\d{1,3}(?:[.,\s]\d{3})*(?:[.,]\d{2})?)/);
+  return m?priceNum(m[1]):null;
 }
 
 /* ============ INCOME ============ */
